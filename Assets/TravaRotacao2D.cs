@@ -8,7 +8,7 @@ public class TravaRotacao2D : MonoBehaviour
     void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
-        if (rb) rb.constraints |= RigidbodyConstraints2D.FreezeRotation; // garante travado
+        if (rb) rb.constraints |= RigidbodyConstraints2D.FreezeRotation;
     }
 
     void LateUpdate()

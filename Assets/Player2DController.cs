@@ -9,7 +9,6 @@ public class Player2DController : MonoBehaviour
     void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
-        // trava rota��o via f�sica
         rb.constraints = RigidbodyConstraints2D.FreezeRotation;
     }
 
@@ -20,14 +19,12 @@ public class Player2DController : MonoBehaviour
         Vector2 dir = new Vector2(h, v).normalized;
         rb.linearVelocity = dir * velocidade;
 
-        // hard lock extra (caso alguma colis�o tente girar)
         rb.angularVelocity = 0f;
-        rb.SetRotation(0f); // mant�m Z = 0
+        rb.SetRotation(0f);
     }
 
     void OnCollisionStay2D(Collision2D _)
     {
-        // redund�ncia de seguran�a (se colidir e tentar girar)
         rb.angularVelocity = 0f;
         rb.SetRotation(0f);
     }

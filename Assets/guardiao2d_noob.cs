@@ -1,105 +1,151 @@
 using UnityEngine;
 
-public class guardiao2d_noob : MonoBehaviour
+public class Guardian2D : MonoBehaviour
 {
-    public enum estadozin
+    public enum State
     {
-        patrulha,
-        alerta,
-        persegui,
-        atack,
-        chama_ajuda,
-        recua,
-        morto
+        Patrol,
+        Alert,
+        Chase,
+        Attack,
+        CallReinforcement,
+        Retreat,
+        Dead
     }
 
-    public estadozin atual = estadozin.patrulha;
+    [Header("References")]
+    [SerializeField] private Transform _target;
 
-    [Header("refs")]
-    public Transform alvo;   // player
-    public float vida = 100f;
+    [Header("Stats")]
+    [SerializeField] private readonly float _maxHealth = 100f;
+    [SerializeField] private readonly float _currentHealth = 100f;
+    [SerializeField] private readonly float _moveSpeed = 3f;
 
-    [Header("movimento")]
-    public float velocidade = 3f;
+    private State _currentState = State.Patrol;
 
-    // faixas
-    float raioAlerta = 20f;
-    float raioChase = 10f;
-    float melee = 3f;
-    float rangedMax = 10f;
+    private const float AlertRange = 20f;
+    private const float ChaseRange = 10f;
+    private const float MeleeRange = 3f;
+    private const float RangedRange = 10f;
 
-    void Update()
+    private void Update()
     {
-        if (!alvo) return;
+        if (!_target) return;
 
-        float dist = Vector2.Distance(transform.position, alvo.position);
-        if (vida <= 0f) atual = estadozin.morto;
+        float distance = Vector2.Distance(transform.position, _target.position);
 
-        switch (atual)
+        if (_currentHealth <= 0f)
         {
-            case estadozin.patrulha:
-                // patrulha boba: movimento de vaivÈm
-                transform.position += Vector3.right * Mathf.Sin(Time.time) * (velocidade * 0.002f);
-                if (dist <= raioAlerta) atual = estadozin.alerta;
-                break;
-
-            case estadozin.alerta:
-                Debug.Log("Guardi„o: em alerta!");
-                if (dist <= raioChase) atual = estadozin.persegui;
-                else if (dist > raioAlerta) atual = estadozin.patrulha;
-                break;
-
-            case estadozin.persegui:
-                IrAte(alvo.position);
-
-                if (vida <= 20f) { atual = estadozin.recua; break; }
-                if (vida <= 40f) { atual = estadozin.chama_ajuda; break; }
-
-                if (dist < melee || (dist >= melee && dist <= rangedMax))
-                    atual = estadozin.atack;
-
-                if (dist > raioAlerta) atual = estadozin.patrulha;
-                break;
-
-            case estadozin.atack:
-                if (dist < melee) Debug.Log("Guardi„o: ataque melee");
-                else if (dist <= rangedMax) Debug.Log("Guardi„o: ataque ranged");
-                atual = estadozin.persegui;
-                break;
-
-            case estadozin.chama_ajuda:
-                Debug.Log("Guardi„o: chamando reforÁos!");
-                atual = estadozin.persegui;
-                break;
-
-            case estadozin.recua:
-                Vector3 dir = (transform.position - alvo.position).normalized;
-                transform.position += dir * (velocidade * Time.deltaTime);
-                vida = Mathf.Min(100f, vida + 6f * Time.deltaTime);
-                if (dist < raioChase || vida >= 40f) atual = estadozin.persegui;
-                break;
-
-            case estadozin.morto:
-                Debug.Log("Guardi„o: morreu!");
-                break;
+            TransitionTo(State.Dead);
+            return;
         }
+
+        _currentState = HandleState(_currentState, distance);
     }
 
-    void IrAte(Vector3 p)
+    private State HandleState(State state, float distance) =>
+        state switch
+        {
+            State.Patrol => HandlePatrol(distance),
+            State.Alert => HandleAlert(distance),
+            State.Chase => HandleChase(distance),
+            State.Attack => HandleAttack(distance),
+            State.CallReinforcement => HandleCallReinforcement(),
+            State.Retreat => HandleRetreat(distance),
+            State.Dead => HandleDead(),
+            _ => state
+        };
+
+    private State HandlePatrol(float distance)
     {
-        Vector3 dir = (p - transform.position).normalized;
-        transform.position += dir * (velocidade * Time.deltaTime);
+        transform.position += Vector3.right * Mathf.Sin(Time.time) * (_moveSpeed * 0.002f);
+
+        if (distance <= AlertRange) return State.Alert;
+        return State.Patrol;
     }
 
-    void OnDrawGizmosSelected()
+    private State HandleAlert(float distance)
+    {
+        Debug.Log("Guardi√£o: em alerta!");
+        if (distance <= ChaseRange) return State.Chase;
+        if (distance > AlertRange) return State.Patrol;
+        return State.Alert;
+    }
+
+    private State HandleChase(float distance)
+    {
+        MoveTowards(_target.position);
+
+        if (_currentHealth <= 20f) return State.Retreat;
+        if (_currentHealth <= 40f) return State.CallReinforcement;
+
+        if (distance <= MeleeRange || distance <= RangedRange)
+            return State.Attack;
+
+        if (distance > AlertRange) return State.Patrol;
+
+        return State.Chase;
+    }
+
+    private State HandleAttack(float distance)
+    {
+        if (distance <= MeleeRange)
+            Debug.Log("Guardi√£o: ataque melee");
+        else if (distance <= RangedRange)
+            Debug.Log("Guardi√£o: ataque ranged");
+
+        return State.Chase;
+    }
+
+    private State HandleCallReinforcement()
+    {
+        Debug.Log("Guardi√£o: chamando refor√ßos!");
+        return State.Chase;
+    }
+
+    private State HandleRetreat(float distance)
+    {
+        Vector3 dir = (transform.position - _target.position).normalized;
+        transform.position += dir * (_moveSpeed * Time.deltaTime);
+
+        _currentHealth = Mathf.Min(_maxHealth, _currentHealth + 6f * Time.deltaTime);
+
+        if (distance < ChaseRange || _currentHealth >= 40f)
+            return State.Chase;
+
+        return State.Retreat;
+    }
+
+    private State HandleDead()
+    {
+        Debug.Log("Guardi√£o: morreu!");
+        return State.Dead;
+    }
+
+    private void TransitionTo(State newState)
+    {
+        if (_currentState == newState) return;
+        _currentState = newState;
+    }
+
+    private void MoveTowards(Vector3 position)
+    {
+        Vector3 dir = (position - transform.position).normalized;
+        transform.position += dir * (_moveSpeed * Time.deltaTime);
+    }
+
+    private void OnDrawGizmosSelected()
     {
         Gizmos.color = Color.yellow;
-        Gizmos.DrawWireSphere(transform.position, raioAlerta);
+        Gizmos.DrawWireSphere(transform.position, AlertRange);
+
         Gizmos.color = Color.red;
-        Gizmos.DrawWireSphere(transform.position, raioChase);
+        Gizmos.DrawWireSphere(transform.position, ChaseRange);
+
         Gizmos.color = Color.green;
-        Gizmos.DrawWireSphere(transform.position, melee);
+        Gizmos.DrawWireSphere(transform.position, MeleeRange);
+
         Gizmos.color = Color.blue;
-        Gizmos.DrawWireSphere(transform.position, rangedMax);
+        Gizmos.DrawWireSphere(transform.position, RangedRange);
     }
 }

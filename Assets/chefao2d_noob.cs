@@ -1,97 +1,139 @@
 using UnityEngine;
 
-public class chefao2d_noob : MonoBehaviour
+public class Boss2D : MonoBehaviour
 {
-    public enum est_chefe
+    public enum State
     {
-        paradin,
-        corre,
-        bate,
-        especial,
-        fugir_curar,
-        foi_de_base
+        Idle,
+        Chase,
+        Attack,
+        Special,
+        RetreatHeal,
+        Dead
     }
 
-    public est_chefe atual = est_chefe.paradin;
+    [Header("References")]
+    [SerializeField] private Transform _target;
 
-    [Header("refs")]
-    public Transform alvo;   // player
+    [Header("Stats")]
+    [SerializeField] private readonly float _maxHealth = 100f;
+    [SerializeField] private readonly float _currentHealth = 100f;
+    [SerializeField] private readonly float _moveSpeed = 2.8f;
 
-    [Header("stats")]
-    public float vida = 100f;
-    public float velocidade = 2.8f;
+    [Header("Cooldowns")]
+    [SerializeField] private readonly float _specialCooldown = 6f;
+    private float _cooldownTimer = 0f;
 
-    [Header("timers")]
-    public float cd_especial = 6f;
-    float timer_cd = 0f;
+    private State _currentState = State.Idle;
 
-    // faixas
-    float raioChase = 15f;
-    float melee = 3f;
-    float rangedMax = 10f;
+    private const float ChaseRange = 15f;
+    private const float MeleeRange = 3f;
+    private const float RangedRange = 10f;
 
-    void Update()
+    private void Update()
     {
-        if (!alvo) return;
+        if (!_target) return;
 
-        float dist = Vector2.Distance(transform.position, alvo.position);
-        if (timer_cd > 0f) timer_cd -= Time.deltaTime;
-        if (vida <= 0f) atual = est_chefe.foi_de_base;
+        float distance = Vector2.Distance(transform.position, _target.position);
+        if (_cooldownTimer > 0f) _cooldownTimer -= Time.deltaTime;
 
-        switch (atual)
+        if (_currentHealth <= 0f)
         {
-            case est_chefe.paradin:
-                if (dist < raioChase) atual = est_chefe.corre;
-                break;
-
-            case est_chefe.corre:
-                IrAte(alvo.position);
-
-                if (vida <= 20f) { atual = est_chefe.fugir_curar; break; }
-                if (vida <= 50f && timer_cd <= 0f) { atual = est_chefe.especial; break; }
-
-                if (dist < melee || (dist >= melee && dist <= rangedMax))
-                    atual = est_chefe.bate;
-                break;
-
-            case est_chefe.bate:
-                if (dist < melee) Debug.Log("Chefão: ataque melee");
-                else if (dist <= rangedMax) Debug.Log("Chefão: ataque ranged");
-                atual = est_chefe.corre;
-                break;
-
-            case est_chefe.especial:
-                Debug.Log("Chefão: ATAQUE ESPECIAL!");
-                timer_cd = cd_especial;
-                atual = est_chefe.corre;
-                break;
-
-            case est_chefe.fugir_curar:
-                Vector3 dir = (transform.position - alvo.position).normalized;
-                transform.position += dir * (velocidade * Time.deltaTime);
-                vida = Mathf.Min(100f, vida + 8f * Time.deltaTime);
-                if (dist < 4f || vida >= 50f) atual = est_chefe.corre;
-                break;
-
-            case est_chefe.foi_de_base:
-                Debug.Log("Chefão: morreu!");
-                break;
+            TransitionTo(State.Dead);
+            return;
         }
+
+        _currentState = HandleState(_currentState, distance);
     }
 
-    void IrAte(Vector3 p)
+    private State HandleState(State state, float distance) =>
+        state switch
+        {
+            State.Idle => HandleIdle(distance),
+            State.Chase => HandleChase(distance),
+            State.Attack => HandleAttack(distance),
+            State.Special => HandleSpecial(),
+            State.RetreatHeal => HandleRetreatHeal(distance),
+            State.Dead => HandleDead(),
+            _ => state
+        };
+
+    private State HandleIdle(float distance)
     {
-        Vector3 dir = (p - transform.position).normalized;
-        transform.position += dir * (velocidade * Time.deltaTime);
+        if (distance < ChaseRange) return State.Chase;
+        return State.Idle;
     }
 
-    void OnDrawGizmosSelected()
+    private State HandleChase(float distance)
+    {
+        MoveTowards(_target.position);
+
+        if (_currentHealth <= 20f) return State.RetreatHeal;
+        if (_currentHealth <= 50f && _cooldownTimer <= 0f) return State.Special;
+
+        if (distance <= MeleeRange || distance <= RangedRange)
+            return State.Attack;
+
+        return State.Chase;
+    }
+
+    private State HandleAttack(float distance)
+    {
+        if (distance <= MeleeRange)
+            Debug.Log("Boss: ataque melee");
+        else if (distance <= RangedRange)
+            Debug.Log("Boss: ataque ranged");
+
+        return State.Chase;
+    }
+
+    private State HandleSpecial()
+    {
+        Debug.Log("Boss: ATAQUE ESPECIAL!");
+        _cooldownTimer = _specialCooldown;
+        return State.Chase;
+    }
+
+    private State HandleRetreatHeal(float distance)
+    {
+        Vector3 dir = (transform.position - _target.position).normalized;
+        transform.position += dir * (_moveSpeed * Time.deltaTime);
+
+        _currentHealth = Mathf.Min(_maxHealth, _currentHealth + 8f * Time.deltaTime);
+
+        if (distance < 4f || _currentHealth >= 50f)
+            return State.Chase;
+
+        return State.RetreatHeal;
+    }
+
+    private State HandleDead()
+    {
+        Debug.Log("Boss: morreu!");
+        return State.Dead;
+    }
+
+    private void TransitionTo(State newState)
+    {
+        if (_currentState == newState) return;
+        _currentState = newState;
+    }
+
+    private void MoveTowards(Vector3 targetPos)
+    {
+        Vector3 dir = (targetPos - transform.position).normalized;
+        transform.position += dir * (_moveSpeed * Time.deltaTime);
+    }
+
+    private void OnDrawGizmosSelected()
     {
         Gizmos.color = Color.red;
-        Gizmos.DrawWireSphere(transform.position, raioChase);
+        Gizmos.DrawWireSphere(transform.position, ChaseRange);
+
         Gizmos.color = Color.green;
-        Gizmos.DrawWireSphere(transform.position, melee);
+        Gizmos.DrawWireSphere(transform.position, MeleeRange);
+
         Gizmos.color = Color.blue;
-        Gizmos.DrawWireSphere(transform.position, rangedMax);
+        Gizmos.DrawWireSphere(transform.position, RangedRange);
     }
 }
